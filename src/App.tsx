@@ -35,7 +35,9 @@ function noteNameToMidi(note: string) {
   const match = note.match(/^([A-G])(#?)(\d)$/);
   if (!match) return null;
   const [, letter, sharp, octave] = match;
-  const base = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[letter] + (sharp ? 1 : 0);
+  const baseVal = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[letter];
+  if (baseVal == null) return null;
+  const base = baseVal + (sharp ? 1 : 0);
   return base + (12 * (parseInt(octave, 10) + 1));
 }
 
@@ -50,7 +52,7 @@ function quantizeToScale(midi: number, keyRoot: string, scaleType: keyof typeof 
   const rootMidi = noteNameToMidi(`${keyRoot}4`)! % 12;
   const intervals = SCALE_INTERVALS[scaleType];
   const diff = ((midi % 12) - rootMidi + 12) % 12;
-  let closest = intervals[0];
+  let closest: number = intervals[0];
   let min = 12;
   intervals.forEach(iv => {
     const d = Math.min((diff - iv + 12) % 12, (iv - diff + 12) % 12);
@@ -69,13 +71,17 @@ function buildChord(note: string) {
   const rootMidi = noteNameToMidi(`${CHORD_PRESET.keyRoot}4`)!;
   const intervals = SCALE_INTERVALS[CHORD_PRESET.scaleType];
   const degreeDiff = ((midi % 12) - (rootMidi % 12) + 12) % 12;
-  const degreeIndex = intervals.reduce((bestIdx, iv, idx) => {
+  let degreeIndex = 0;
+  let bestDiff = Math.abs(degreeDiff - intervals[0]);
+  intervals.forEach((iv, idx) => {
     const d = Math.abs(degreeDiff - iv);
-    const best = Math.abs(degreeDiff - intervals[bestIdx]);
-    return d < best ? idx : bestIdx;
-  }, 0);
+    if (d < bestDiff) {
+      bestDiff = d;
+      degreeIndex = idx;
+    }
+  });
   const degree = degreeIndex + 1;
-  const baseTriad = BASE_TRIADS.major[(degree - 1) % 7];
+  const baseTriad = BASE_TRIADS.major[(degree - 1) % 7] ?? BASE_TRIADS.major[0];
   const degreeRootMidi = quantizeToScale(midi, CHORD_PRESET.keyRoot, CHORD_PRESET.scaleType);
   const chordMidis = baseTriad.map(iv => degreeRootMidi + iv);
   return chordMidis.map(midiToNoteName);
@@ -570,7 +576,7 @@ function CassetteRecorder({
     });
     const mp3enc = new lamejs.Mp3Encoder(numChannels, pcm.sampleRate, 128);
     const blockSize = 1152;
-    const mp3Data: Uint8Array[] = [];
+    const mp3Data: BlobPart[] = [];
     for (let i = 0; i < leftFlat.length; i += blockSize) {
       const leftChunk = leftFlat.subarray(i, i + blockSize);
       const rightChunk = rightFlat.subarray(i, i + blockSize);
